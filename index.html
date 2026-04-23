@@ -1827,7 +1827,8 @@ function editWorkout(id){
       const isCardio=!!(def.cardio||ex.cardio);const isBW=!!(def.bw||ex.bodyweight)||isCardio;
       return`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:8px">
         <div style="font-family:var(--disp);font-size:14px;font-weight:700;margin-bottom:8px;color:var(--lime)">${escHtml(def.name)}</div>
-        ${ex.sets.filter(s=>s.reps||s.duration||s.lReps||s.rReps).map((s,si)=>{
+        ${ex.sets.map((s,si)=>{
+          if(!s.reps&&!s.duration&&!s.lReps&&!s.rReps&&!s.weight)return'';
           const label=`Set ${si+1}${s.type==='W'?' (W)':''}`;
           const isUni=!!(ex.unilateral||s.lReps||s.rReps);
           if(isCardio)return`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
@@ -1878,8 +1879,12 @@ function saveWorkoutEdit(){
   document.querySelectorAll('[data-wid][data-exi][data-si][data-field]').forEach(inp=>{
     const exi=parseInt(inp.dataset.exi),si=parseInt(inp.dataset.si),field=inp.dataset.field;
     if(!w.exercises[exi]||!w.exercises[exi].sets[si])return;
-    const val=field==='reps'||field==='lReps'||field==='rReps'?parseInt(inp.value)||'':parseFloat(inp.value)||'';
+    const raw=inp.value.trim();
+    const val=raw===''?'':(field==='reps'||field==='lReps'||field==='rReps'?parseInt(raw)||'':parseFloat(raw)||'');
     w.exercises[exi].sets[si][field]=val;
+    // Mark set done if it has meaningful data
+    const s=w.exercises[exi].sets[si];
+    if(s.reps||s.duration||s.lReps||s.rReps)s.done=true;
     if(val&&(field==='lReps'||field==='rReps'))w.exercises[exi].sets[si].reps=val;// keep reps in sync
   });
   saveWorkouts(ws);closeModal();renderHistory();showToast('Workout updated','✅');
