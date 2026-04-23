@@ -2848,7 +2848,11 @@ function importData(){
 function clearAllData(){if(!confirm('Delete ALL data? Cannot be undone.'))return;['exercises','workouts','session','utpls','cats','settings','sstart','recent_ex'].forEach(k=>localStorage.removeItem('lift4_'+k));location.reload()}
 
 // ─── MODAL w/ SWIPE DOWN ──────────────────────────────────────────────────────
+let _closeTimer=null;
 function openModal(html){
+  if(_closeTimer){clearTimeout(_closeTimer);_closeTimer=null;}
+  const sheet=document.getElementById('sheet');
+  sheet.style.transform='';sheet.style.opacity='';sheet.style.transition='';
   document.getElementById('sheet-content').innerHTML=html;
   document.getElementById('overlay').classList.add('open');
   document.body.style.overflow='hidden';
@@ -2857,7 +2861,9 @@ function closeModal(){
   const sheet=document.getElementById('sheet');
   sheet.style.transition='transform .22s var(--ease),opacity .22s';
   sheet.style.transform='translateY(100%)';sheet.style.opacity='0';
-  setTimeout(()=>{
+  if(_closeTimer)clearTimeout(_closeTimer);
+  _closeTimer=setTimeout(()=>{
+    _closeTimer=null;
     document.getElementById('overlay').classList.remove('open');
     sheet.style.transform='';sheet.style.opacity='';sheet.style.transition='';
     document.body.style.overflow='';
@@ -2883,7 +2889,7 @@ function maybeCloseModal(e){if(e.target===document.getElementById('overlay'))clo
   },{passive:true});
   sheet.addEventListener('touchend',()=>{
     if(!dragging)return;dragging=false;
-    if(curY>90){closeModal();sheet.style.transform='';sheet.style.opacity=''}
+    if(curY>90){closeModal();}
     else{sheet.style.transition='transform .22s var(--spring)';sheet.style.transform='';sheet.style.opacity='';setTimeout(()=>sheet.style.transition='',220)}
   });
 })();
