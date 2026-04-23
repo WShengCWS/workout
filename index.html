@@ -724,13 +724,25 @@ label{font-family:var(--disp);font-size:11px;font-weight:600;color:var(--text3);
       <div><div class="page-title">Stats</div><div id="stats-sub" class="page-sub" style="margin:0"></div></div>
       <div id="streak-display"></div>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <button class="btn-icon" onclick="shiftStatsWeek(-1)" title="Previous week" style="padding:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div id="stats-week-label" style="flex:1;text-align:center;font-family:var(--mono);font-size:12px;color:var(--text2)">This Week</div>
+      <button class="btn-icon" id="stats-next-btn" onclick="shiftStatsWeek(1)" title="Next week" style="padding:8px;opacity:.35;pointer-events:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
     <div class="stat-grid" id="stat-grid"></div>
     <div class="week-card">
       <div class="row-between"><h3 style="margin:0">This Week</h3><span style="font-size:11px;color:var(--text3);font-family:var(--mono)">tap a day</span></div>
       <div class="week-row" id="week-row"></div>
     </div>
     <div class="section-card">
-      <h3>Muscle Volume — This Week</h3>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <h3 style="margin:0">Muscle Volume — <span id="mv-week-badge">This Week</span></h3>
+        <button class="btn btn-ghost btn-xs" onclick="openMvRangesEditor()" style="font-size:10px;padding:4px 8px">⚙️ Edit Targets</button>
+      </div>
       <div class="mv-guide-header" onclick="toggleMvGuide()">
         <span class="mv-guide-title">ℹ️ Recommended Weekly Sets</span>
         <svg class="mv-guide-icon" id="mv-guide-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -926,7 +938,7 @@ let session=DB.get('session')||{title:'Upper',date:today(),note:'',exercises:[]}
 if(!('bodyweight' in session))session.bodyweight=DB.get('bw')||'';
 let sessionStart=DB.get('sstart')||null;
 function saveSession(){DB.set('session',session)}
-function today(){return new Date().toISOString().split('T')[0]}
+function today(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function makeId(){return '_'+Math.random().toString(36).substr(2,9)}
 function fmtDate(d){return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'2-digit'})}
 function fmtDateShort(d){return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'})}
@@ -948,7 +960,7 @@ function switchTab(tab){
   currentTab=tab;
   if(tab==='history')renderHistory();
   if(tab==='library')renderLibrary();
-  if(tab==='stats')renderStats();
+  if(tab==='stats'){_statsCache=null;renderStats();}
   if(tab==='progress')initProgress();
 }
 
@@ -2239,17 +2251,108 @@ function deleteExercise(id){if(!confirm('Delete this exercise?'))return;saveExer
 
 // ─── STATS CACHE ──────────────────────────────────────────────────────────────
 let _statsCache=null;
+let _statsWeekOffset=0; // 0=current, -1=last week, etc.
+
+function getMvRanges(){
+  const stored=DB.get('mvRanges');
+  const defaults={
+    chest:{mev:8,mrv:22},back:{mev:10,mrv:25},shoulders:{mev:8,mrv:20},
+    biceps:{mev:8,mrv:20},triceps:{mev:8,mrv:20},quads:{mev:8,mrv:20},
+    hamstrings:{mev:6,mrv:20},glutes:{mev:6,mrv:16},calves:{mev:8,mrv:20},
+    core:{mev:6,mrv:20},general:{mev:0,mrv:999},cardio:{mev:0,mrv:999},other:{mev:0,mrv:999}
+  };
+  if(!stored)return defaults;
+  return{...defaults,...stored};
+}
+function saveMvRanges(v){DB.set('mvRanges',v)}
+
+function shiftStatsWeek(dir){
+  _statsWeekOffset+=dir;
+  if(_statsWeekOffset>0)_statsWeekOffset=0;
+  _statsCache=null;
+  renderStats();
+}
+
+function openMvRangesEditor(){
+  const ranges=getMvvRangesDisplay();
+  const muscles=Object.entries(ranges).filter(([m])=>!['general','cardio','other'].includes(m));
+  const rows=muscles.map(([m,r])=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="font-family:var(--disp);font-size:12px;font-weight:600;text-transform:capitalize;min-width:90px;color:var(--text)">${m}</span>
+      <div style="flex:1;display:flex;gap:6px;align-items:center">
+        <div style="flex:1"><label style="font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)">MEV</label><input type="number" inputmode="numeric" class="mv-edit-inp" data-muscle="${m}" data-field="mev" value="${r.mev}" style="padding:6px 8px;font-size:13px;font-family:var(--mono);width:100%"></div>
+        <span style="color:var(--text3);font-size:11px;margin-top:12px">–</span>
+        <div style="flex:1"><label style="font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)">MRV</label><input type="number" inputmode="numeric" class="mv-edit-inp" data-muscle="${m}" data-field="mrv" value="${r.mrv}" style="padding:6px 8px;font-size:13px;font-family:var(--mono);width:100%"></div>
+      </div>
+    </div>`).join('');
+  openModal(`
+    <div class="sheet-title">Edit Volume Targets</div>
+    <p style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.5">MEV = Minimum Effective Volume. MRV = Max Recoverable Volume. Sets per week. Defaults based on RP Strength research.</p>
+    ${rows}
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-ghost btn-sm" style="flex:1" onclick="resetMvRanges()">Reset Defaults</button>
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="saveMvRangesFromModal()">Save</button>
+    </div>`);
+}
+
+function getMvvRangesDisplay(){return getMvRanges();}
+
+function saveMvRangesFromModal(){
+  const current=getMvRanges();
+  document.querySelectorAll('.mv-edit-inp').forEach(inp=>{
+    const m=inp.dataset.muscle,f=inp.dataset.field;
+    const v=parseInt(inp.value);
+    if(m&&f&&!isNaN(v)){if(!current[m])current[m]={mev:0,mrv:999};current[m][f]=v;}
+  });
+  saveMvRanges(current);
+  _statsCache=null;
+  closeModal();
+  showToast('Targets saved','✅');
+  if(currentTab==='stats')renderStats();
+}
+
+function resetMvRanges(){
+  if(!confirm('Reset all muscle volume targets to defaults?'))return;
+  DB.set('mvRanges',null);
+  _statsCache=null;
+  closeModal();
+  showToast('Reset to defaults','🔄');
+  if(currentTab==='stats')renderStats();
+}
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 function renderStats(){
   const ws=getWorkouts();
-  // Use cache if valid
-  if(_statsCache&&_statsCache.wCount===ws.length&&_statsCache.lastTs===(ws[ws.length-1]?.ts||0)){
+  const now=new Date();
+  // Calculate week start based on offset
+  const wStart=new Date(now);
+  wStart.setDate(now.getDate()-((now.getDay()+6)%7)+(_statsWeekOffset*7));
+  wStart.setHours(0,0,0,0);
+  const wEnd=new Date(wStart);wEnd.setDate(wStart.getDate()+6);wEnd.setHours(23,59,59,999);
+
+  const isCurrentWeek=_statsWeekOffset===0;
+  const nextBtn=document.getElementById('stats-next-btn');
+  if(nextBtn){nextBtn.style.opacity=isCurrentWeek?'.35':'1';nextBtn.style.pointerEvents=isCurrentWeek?'none':'auto';}
+
+  // Week label
+  const wLbl=document.getElementById('stats-week-label');
+  if(wLbl){
+    if(isCurrentWeek){wLbl.textContent='This Week';}
+    else if(_statsWeekOffset===-1){wLbl.textContent='Last Week';}
+    else{
+      const opts={month:'short',day:'numeric'};
+      wLbl.textContent=wStart.toLocaleDateString('en-GB',opts)+' – '+wEnd.toLocaleDateString('en-GB',opts);
+    }
+  }
+  const mvBadge=document.getElementById('mv-week-badge');
+  if(mvBadge)mvBadge.textContent=isCurrentWeek?'This Week':_statsWeekOffset===-1?'Last Week':'Selected Week';
+
+  // Use cache if valid (same workout count, same week offset, same last ts)
+  if(_statsCache&&_statsCache.wCount===ws.length&&_statsCache.lastTs===(ws[ws.length-1]?.ts||0)&&_statsCache.weekOffset===_statsWeekOffset){
     _applyStatsCache();return;
   }
-  const now=new Date();
-  const wStart=new Date(now);wStart.setDate(now.getDate()-((now.getDay()+6)%7));wStart.setHours(0,0,0,0);
-  const thisWeek=ws.filter(w=>new Date(w.date+'T00:00:00')>=wStart);
+
+  const thisWeek=ws.filter(w=>{const d=new Date(w.date+'T00:00:00');return d>=wStart&&d<=wEnd;});
   const workSets=thisWeek.reduce((a,w)=>a+w.exercises.reduce((b,ex)=>b+ex.sets.filter(s=>s.type!=='W'&&(s.reps||s.duration||s.distance)).length,0),0);
   const tVol=ws.reduce((a,w)=>a+w.exercises.reduce((b,ex)=>b+ex.sets.filter(s=>s.type!=='W').reduce((c,s)=>c+(s.weight&&s.reps?parseFloat(s.weight)*parseInt(s.reps):0),0),0),0);
   const streak=calcStreak(ws);
@@ -2268,26 +2371,27 @@ function renderStats(){
     }
   })}));
 
-  _statsCache={wCount:ws.length,lastTs:ws[ws.length-1]?.ts||0,streak,bestStreak,thisWeek,workSets,tVol,ws,wStart,prs};
+  _statsCache={wCount:ws.length,lastTs:ws[ws.length-1]?.ts||0,streak,bestStreak,thisWeek,workSets,tVol,ws,wStart,wEnd,prs,weekOffset:_statsWeekOffset};
   _applyStatsCache();
 }
 
 function _applyStatsCache(){
   if(!_statsCache)return;
-  const {streak,bestStreak,thisWeek,workSets,tVol,ws,wStart,prs}=_statsCache;
+  const {streak,bestStreak,thisWeek,workSets,tVol,ws,wStart,wEnd,prs}=_statsCache;
+  const isCurrentWeek=_statsWeekOffset===0;
   document.getElementById('streak-display').innerHTML=`<span class="streak-badge" onclick="showStreakCalendar()" style="${streak===0?'opacity:.45':''}">${streak>0?'🔥':'💤'} ${streak} <span style="font-size:10px;opacity:.7">day${streak!==1?'s':''}</span></span>`;
   document.getElementById('stats-sub').textContent=`Week of ${fmtDate(wStart.toISOString().split('T')[0])}`;
   document.getElementById('stat-grid').innerHTML=`
-    <div class="stat-card"><div class="stat-label">This week</div><div class="stat-value">${thisWeek.length}</div><div class="stat-sub">sessions</div></div>
-    <div class="stat-card"><div class="stat-label">Working sets</div><div class="stat-value">${workSets}</div><div class="stat-sub">this week</div></div>
+    <div class="stat-card"><div class="stat-label">${isCurrentWeek?'This week':'Selected week'}</div><div class="stat-value">${thisWeek.length}</div><div class="stat-sub">sessions</div></div>
+    <div class="stat-card"><div class="stat-label">Working sets</div><div class="stat-value">${workSets}</div><div class="stat-sub">${isCurrentWeek?'this week':'that week'}</div></div>
     <div class="stat-card"><div class="stat-label">All workouts</div><div class="stat-value">${ws.length}</div><div class="stat-sub">total</div></div>
     <div class="stat-card"><div class="stat-label">Total volume</div><div class="stat-value">${tVol>9999?(tVol/1000).toFixed(1)+'k':Math.round(tVol)||'-'}</div><div class="stat-sub">${getSetting('unit')}</div></div>`;
 
-  // Week dots — clickable
+  // Week dots — clickable (always show the selected week)
   const days=['M','T','W','T','F','S','S'];
   document.getElementById('week-row').innerHTML=days.map((d,i)=>{
     const dd=new Date(wStart);dd.setDate(wStart.getDate()+i);
-    const ds=dd.toISOString().split('T')[0];
+    const ds=`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`;
     const dayWs=ws.filter(w=>w.date===ds);
     const trained=dayWs.length>0;const isToday=ds===today();
     return`<div class="w-day" onclick="showDayDetail('${ds}')">
@@ -2299,12 +2403,7 @@ function _applyStatsCache(){
   }).join('');
 
   // ── Muscle Volume + Set Count ──
-  const MV_RANGES={
-    chest:{mev:8,mrv:22},back:{mev:10,mrv:25},shoulders:{mev:8,mrv:20},
-    biceps:{mev:8,mrv:20},triceps:{mev:8,mrv:20},quads:{mev:8,mrv:20},
-    hamstrings:{mev:6,mrv:20},glutes:{mev:6,mrv:16},calves:{mev:8,mrv:20},
-    core:{mev:6,mrv:20},general:{mev:0,mrv:999},cardio:{mev:0,mrv:999},other:{mev:0,mrv:999}
-  };
+  const MV_RANGES=getMvRanges();
   const mVol={};const mSets={};
   thisWeek.forEach(w=>w.exercises.forEach(ex=>{
     const def=getExercises().find(e=>e.id===ex.exId);
@@ -2342,7 +2441,7 @@ function _applyStatsCache(){
 
   const guideEl=document.getElementById('mv-guide-ranges');
   if(guideEl){
-    const muscles=Object.entries(MV_RANGES).filter(([m])=>!['general','cardio','other'].includes(m));
+    const muscles=Object.entries(getMvRanges()).filter(([m])=>!['general','cardio','other'].includes(m));
     guideEl.innerHTML=muscles.map(([m,r])=>`<div class="mv-range-row"><span style="font-family:var(--disp);font-size:11px;text-transform:capitalize">${m}</span><span style="font-family:var(--mono);font-size:11px">${r.mev}–${r.mrv} sets/wk</span></div>`).join('');
   }
 
