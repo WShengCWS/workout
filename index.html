@@ -2708,6 +2708,7 @@ function doSaveTemplate(){
 // ─── REST TIMER (background-safe with absolute timestamps) ───────────────────
 let restTimer=null,restRem=0,restTotal=0,restEndTime=0;
 function startRestTimer(){
+  requestNotifPerm();
   const secs=getSetting('restSecs')||90;
   if(restTimer)clearInterval(restTimer);
   restRem=secs;restTotal=secs;
@@ -2725,6 +2726,26 @@ function tickRest(){
   if(rem!==restRem){restRem=rem;updateRestUI()}
   if(restRem<=0){clearInterval(restTimer);restTimer=null;onRestDone()}
 }
+function requestNotifPerm(){
+  if('Notification' in window&&Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+}
+function fireRestNotification(){
+  if(!('Notification' in window))return;
+  if(Notification.permission==='granted'){
+    try{
+      const n=new Notification('Rest done — time to lift! 💪',{
+        body:'Your rest timer is up. Next set ready.',
+        icon:'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><text y=%221em%22 font-size=%2248%22>🏋️</text></svg>',
+        tag:'lift-rest',
+        renotify:true,
+        silent:false
+      });
+      setTimeout(()=>n.close(),6000);
+    }catch(e){}
+  }
+}
 function onRestDone(){
   document.getElementById('rest-timer').className='show t-done';
   document.getElementById('rt-icon').textContent='🔔';
@@ -2733,8 +2754,8 @@ function onRestDone(){
   document.getElementById('rt-text').textContent='Rest complete!';
   document.getElementById('rt-bar').style.cssText='width:100%;background:var(--lime)';
   haptic([80,50,80,50,160]);beep();
+  fireRestNotification();
   const f=document.getElementById('timer-flash');f.className='';requestAnimationFrame(()=>requestAnimationFrame(()=>f.className='flash'));
-  // Show big center popup
   const pop=document.getElementById('timer-done-popup');
   pop.classList.add('show');
   setTimeout(()=>pop.classList.remove('show'),3500);
@@ -3026,27 +3047,36 @@ function initDragReorder(){
 
 // ─── PILL SWIPE TO DELETE ─────────────────────────────────────────────────────
 function initPillSwipe(pill,ei,si){
-  let startX=0,curX=0,swiping=false;
+  let startX=0,startY=0,curX=0,swiping=false,locked=false,axisLocked=false;
   const wrap=pill.parentElement;
 
   pill.addEventListener('touchstart',e=>{
-    startX=e.touches[0].clientX;curX=0;swiping=true;
+    startX=e.touches[0].clientX;startY=e.touches[0].clientY;
+    curX=0;swiping=true;locked=false;axisLocked=false;
     pill.style.transition='none';
   },{passive:true});
 
   pill.addEventListener('touchmove',e=>{
     if(!swiping)return;
-    curX=e.touches[0].clientX-startX;
-    if(curX>0){curX=0}// only swipe left
+    const dx=e.touches[0].clientX-startX;
+    const dy=e.touches[0].clientY-startY;
+    // Determine axis lock on first meaningful move
+    if(!axisLocked&&(Math.abs(dx)>6||Math.abs(dy)>6)){
+      axisLocked=true;
+      // If vertical movement dominates → this is a scroll, cancel swipe
+      if(Math.abs(dy)>Math.abs(dx)){locked=true;}
+    }
+    if(locked)return;
+    curX=Math.min(0,dx);// only swipe left
     pill.style.transform=`translateX(${curX}px)`;
-    wrap?.classList.toggle('reveal-del',curX<-28);
+    wrap?.classList.toggle('reveal-del',curX<-40);
   },{passive:true});
 
   pill.addEventListener('touchend',()=>{
     if(!swiping)return;swiping=false;
     pill.style.transition='';
-    if(curX<-50){
-      // Delete
+    if(!locked&&curX<-72){
+      // Committed delete — needs a strong deliberate swipe
       pill.style.transform='translateX(-100%)';
       pill.style.opacity='0';
       setTimeout(()=>removeSet(ei,si),200);
@@ -3054,10 +3084,9 @@ function initPillSwipe(pill,ei,si){
     } else {
       pill.style.transform='';
       wrap?.classList.remove('reveal-del');
-      // If short swipe, treat as tap
-      if(Math.abs(curX)<6)activateSetEditor(ei,si);
+      if(!locked&&Math.abs(curX)<8)activateSetEditor(ei,si);
     }
-    curX=0;
+    curX=0;locked=false;axisLocked=false;
   });
 }
 
